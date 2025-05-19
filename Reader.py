@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 INPUT_PATH = Path(__file__).parent.absolute() / 'ERsurvey.csv'
-OUTPUT_PATH = Path(__file__).parent.absolute() / 'ERsurveyFormat.csv'
+OUTPUT_PATH = Path(__file__).parent.absolute() / 'ERsurveyFormat.xlsx'
 
 def main():
     df = pd.read_csv(INPUT_PATH)
@@ -52,7 +52,7 @@ def main():
             )
         )
 
-    formatDF.to_csv(OUTPUT_PATH, index=False)
+    formatDF.to_excel(OUTPUT_PATH, index=False)
 
     for q in question_starts:
         indices = ''.join(formatDF[q].dropna())
