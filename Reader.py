@@ -6,22 +6,51 @@ OUTPUT_PATH = Path(__file__).parent.absolute() / 'ERsurveyFormat.csv'
 
 def main():
     df = pd.read_csv(INPUT_PATH)
-    ids_and_answers = {
-        0 if pd.isna(k) else int(k): v
-        for k, v in df.set_index('AnonID')['Q1: columns'].items()
-    }
+    # Drop the description row (row 0)
+    df_clean = df.iloc[1:].copy()
 
-    questions = df.columns.tolist()
-    questions = [e for e in questions if e[0] == 'Q']
-    formatDF = pd.DataFrame({'AnonID': ids_and_answers.keys()})
-    for q in questions:
-        formatDF[q] = pd.NA
+    # Convert AnonID to int, replace NaNs with 0
+    df_clean['AnonID'] = df_clean['AnonID'].apply(lambda x: 0 if pd.isna(x) else int(x))
+
+    # Identify question start columns
+    question_starts = [col for col in df.columns if isinstance(col, str) and col.startswith('Q')]
+
+    # Create the result dictionary
+    result = {}
+
+    for _, row in df_clean.iterrows():
+        anon_id = int(row['AnonID'])
+        result[anon_id] = {}
+
+        for q_start in question_starts:
+            start_idx = df.columns.get_loc(q_start)
+            next_q_idx = next(
+                (df.columns.get_loc(col) for col in question_starts if df.columns.get_loc(col) > start_idx),
+                len(df.columns)
+            )
+            question_values = row.iloc[start_idx:next_q_idx]
+
+            # Convert to list of ints (skip NaN, leave as 0 or None if needed)
+            clean_values = []
+            for val in question_values:
+                try:
+                    clean_values.append(int(float(val)))
+                except (ValueError, TypeError):
+                    clean_values.append(0)
+
+            result[anon_id][q_start] = clean_values
+
+    formatDF = pd.DataFrame({'AnonID': result.keys()})
+
+    for q in question_starts:
+        formatDF[q] = formatDF['AnonID'].apply(
+            lambda anon_id: (
+                ''.join(str(i + 1) for i, val in enumerate(result[anon_id][q]) if val == 1)
+                if anon_id in result and q in result[anon_id] else pd.NA
+            )
+        )
+
     formatDF.to_csv(OUTPUT_PATH, index=False)
-    for id in ids_and_answers:
-        print(f"{id}: {ids_and_answers[id]}")
-
-
-
 
 if __name__ == '__main__':
     main()
