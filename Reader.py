@@ -1,5 +1,7 @@
 import pandas as pd
 from pathlib import Path
+import matplotlib.pyplot as plt
+from collections import Counter
 
 INPUT_PATH = Path(__file__).parent.absolute() / 'ERsurvey.csv'
 OUTPUT_PATH = Path(__file__).parent.absolute() / 'ERsurveyFormat.csv'
@@ -51,6 +53,19 @@ def main():
         )
 
     formatDF.to_csv(OUTPUT_PATH, index=False)
+
+    for q in question_starts:
+        indices = ''.join(formatDF[q].dropna())
+        counts = Counter(indices)
+        x = sorted(counts.keys())
+        y = [counts[k] for k in x]
+
+        plt.bar(x, y)
+        plt.xlabel('Rubric Index')
+        plt.ylabel('Count')
+        plt.title(f'{q} Response Distribution')
+        plt.tight_layout()
+        plt.show()
 
 if __name__ == '__main__':
     main()
