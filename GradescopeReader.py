@@ -66,7 +66,7 @@ def get_survey_data():
 
     for idx in range(1, 10):
         row = {'AnonID': f'Option_{idx}'}
-        for q in question_starts:
+        for q in question_map:
             count = formatDF[q].dropna().apply(lambda s: str(idx) in str(s)).sum()
             row[q] = count
         summary_rows.append(row)

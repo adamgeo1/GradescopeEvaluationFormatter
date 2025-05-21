@@ -50,6 +50,23 @@ def get_midterm_data():
             question_dict[qname] = (score, rubric)
             offset += 1 + len(qdata["rubric"])
 
+        # Add combined scores for multipart questions
+        # e.g., Q2 = Q2a + Q2b + Q2c + Q2d
+        question_dict["Q2"] = (
+            sum(question_dict[q][0] for q in ["Q2a", "Q2b", "Q2c", "Q2d"]),
+            [val for q in ["Q2a", "Q2b", "Q2c", "Q2d"] for val in question_dict[q][1]]
+        )
+
+        question_dict["Q4"] = (
+            sum(question_dict[q][0] for q in ["Q4a", "Q4b", "Q4c", "Q4d"]),
+            [val for q in ["Q4a", "Q4b", "Q4c", "Q4d"] for val in question_dict[q][1]]
+        )
+
+        question_dict["Q5_6"] = (
+            question_dict["Q5"][0] + question_dict["Q6"][0],
+            question_dict["Q5"][1] + question_dict["Q6"][1]
+        )
+
         ids_and_scores[student_id] = question_dict
 
     '''# Print the result
