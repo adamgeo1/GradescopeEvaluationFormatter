@@ -1,12 +1,14 @@
-from pathlib import Path
+import math
 import pandas as pd
-
-INPUT_PATH = Path(__file__).parent.absolute() / "Copy of midtermAnon - full.csv"
 
 def safe_int(x):
     return 0 if pd.isna(x) or (isinstance(x, float) and math.isnan(x)) else int(x)
 
-def main():
+def get_midterm_data():
+    from pathlib import Path
+
+    INPUT_PATH = Path(__file__).parent.absolute() / "midtermAnon - surveyCull.csv"
+
     df = pd.read_csv(INPUT_PATH)
 
     # The column that stores the student ID
@@ -37,7 +39,7 @@ def main():
     # Build the nested dictionary
     ids_and_scores = {}
     for row in df.loc[1:, needed_columns].itertuples(index=False, name=None):
-        student_id = row[0]
+        student_id = int(row[0])
         values = row[1:]
 
         question_dict = {}
@@ -50,11 +52,13 @@ def main():
 
         ids_and_scores[student_id] = question_dict
 
-    # Print the result
+    '''# Print the result
     for sid, questions in ids_and_scores.items():
         print(f"{sid}:")
         for q, (score, rubric) in questions.items():
-            print(f"  {q}: ({score}, {rubric})")
+            print(f"  {q}: ({score}, {rubric})")'''
+
+    return ids_and_scores
 
 if __name__ == "__main__":
-    main()
+    get_midterm_data()
