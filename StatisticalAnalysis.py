@@ -1,6 +1,8 @@
+from openpyxl.styles.builtins import output
+
 from MidtermReader import get_midterm_data
 from GradescopeReader import get_survey_data
-from scipy.stats import chi2_contingency
+from scipy.stats import chi2_contingency, fisher_exact
 import pandas as pd
 from pathlib import Path
 
@@ -31,7 +33,10 @@ def main():
                 "Survey Incorrect & MT Correct": "",
                 "Survey Incorrect & MT Incorrect": "",
                 "Chi-squared": "",
-                "p-value": ""
+                "Fisher Exact": "",
+                "p-value (chi-squared)": "",
+                "p-value (fisher exact)": "",
+                "Notes" : ""
             })
 
             results.append({
@@ -42,7 +47,10 @@ def main():
                 "Survey Incorrect & MT Correct": "",
                 "Survey Incorrect & MT Incorrect": "",
                 "Chi-squared": "",
-                "p-value": ""
+                "Fisher Exact": "",
+                "p-value (chi-squared)": "",
+                "p-value (fisher exact)": "",
+                "Notes": ""
             })
 
             results.append({
@@ -53,7 +61,10 @@ def main():
                 "Survey Incorrect & MT Correct": "",
                 "Survey Incorrect & MT Incorrect": "",
                 "Chi-squared": "",
-                "p-value": ""
+                "Fisher Exact": "",
+                "p-value (chi-squared)": "",
+                "p-value (fisher exact)": "",
+                "Notes": ""
             })
 
         for midterm_q, score in midterm_qs.items():
@@ -82,21 +93,12 @@ def main():
 
                 table = [[a, b], [c, d]]
 
-                if a < 5 or b < 5 or c < 5 or d < 5:
-                    print(f"{survey_q}: Skipping — not enough variation for chi-squared.\n")
-                    results.append({
-                        "Survey Question": survey_q,
-                        "Midterm Question": midterm_q,
-                        "Survey Correct & MT Correct": a,
-                        "Survey Correct & MT Incorrect": b,
-                        "Survey Incorrect & MT Correct": c,
-                        "Survey Incorrect & MT Incorrect": d,
-                        "Chi-squared": "Not enough variation for chi-squared.",
-                        "p-value": ""
-                    })
-                    continue
+                perform_chi = not (a < 5 or b < 5 or c < 5 or d < 5)
 
-                chi2, p, dof, expected = chi2_contingency(table)
+                if perform_chi:
+                    chi2, p_chi, dof, expected = chi2_contingency(table)
+
+                fish, p_fish = fisher_exact(table)
 
                 results.append({
                     "Survey Question": survey_q,
@@ -105,8 +107,11 @@ def main():
                     "Survey Correct & MT Incorrect": b,
                     "Survey Incorrect & MT Correct": c,
                     "Survey Incorrect & MT Incorrect": d,
-                    "Chi-squared": round(chi2, 4),
-                    "p-value": round(p, 4)
+                    "Chi-squared": round(chi2, 4) if perform_chi else "N/A",
+                    "Fisher Exact": round(fish, 4),
+                    "p-value (chi-squared)": round(p_chi, 4) if perform_chi else "N/A",
+                    "p-value (fisher exact)": round(p_fish, 4),
+                    "Notes": "" if perform_chi else "Not enough variation for chi-squared"
                 })
 
     output_df = pd.DataFrame(results)
@@ -114,12 +119,28 @@ def main():
         output_df.to_excel(writer, index=False)
         worksheet = writer.sheets["Sheet1"]
 
+        from openpyxl.worksheet.table import Table, TableStyleInfo
         from openpyxl.styles import PatternFill
         from copy import copy
 
-        highlight = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        end_col = chr(ord('A') + len(output_df.columns) - 1)
+        end_row = output_df.shape[0] + 1
+        table_range = f"A1:{end_col}{end_row}"
 
-        for row_idx, (survey_q, p_val) in enumerate(zip(output_df["Survey Question"], output_df["p-value"]), start=2):
+        table = Table(displayName="ERsurvey_midterm_analysis", ref=table_range)
+        style = TableStyleInfo(
+            name="TableStyleLight15",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False
+        )
+        table.tableStyleInfo = style
+        worksheet.add_table(table)
+
+        highlight = PatternFill(start_color="32CD44", end_color="32CD44", fill_type="solid")
+
+        for row_idx, (survey_q, p_val_chi, p_val_fish) in enumerate(zip(output_df["Survey Question"], output_df["p-value (chi-squared)"], output_df["p-value (fisher exact)"]), start=2):
             # Bold header rows
             if isinstance(survey_q, str) and survey_q.startswith("Tests allowing for"):
                 for col in range(1, len(output_df.columns) + 1):
@@ -129,8 +150,12 @@ def main():
                     cell.font = bold_font
 
             # Highlight p-value < 0.05
-            if isinstance(p_val, (int, float)) and p_val < 0.05:
-                cell = worksheet.cell(row=row_idx, column=output_df.columns.get_loc("p-value") + 1)
+            if isinstance(p_val_chi, (int, float)) and p_val_chi < 0.05:
+                cell = worksheet.cell(row=row_idx, column=output_df.columns.get_loc("p-value (chi-squared)") + 1)
+                cell.fill = highlight
+
+            if isinstance(p_val_fish, (int, float)) and p_val_fish < 0.05:
+                cell = worksheet.cell(row=row_idx, column=output_df.columns.get_loc("p-value (fisher exact)") + 1)
                 cell.fill = highlight
 
         for col_idx, column in enumerate(output_df.columns, start=1):
