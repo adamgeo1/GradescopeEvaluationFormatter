@@ -1,12 +1,14 @@
-from openpyxl.styles.builtins import output
-
 from MidtermReader import get_midterm_data
 from GradescopeReader import get_survey_data
-from scipy.stats import chi2_contingency, fisher_exact
+from scipy.stats import chi2_contingency, fisher_exact, chi2
 import pandas as pd
 from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
 
-OUTPUT_PATH = Path(__file__).parent.absolute() / "output" / "ERsurvey_midterm_comparison.xlsx"
+OUTPUT_FOLDER = Path(__file__).parent.absolute() / "output"
+OUTPUT_FOLDER.mkdir(exist_ok=True)
+OUTPUT_PATH = OUTPUT_FOLDER / "ERsurvey_midterm_comparison.xlsx"
 
 def main():
     midterm = get_midterm_data()
@@ -96,7 +98,31 @@ def main():
                 perform_chi = not (a < 5 or b < 5 or c < 5 or d < 5)
 
                 if perform_chi:
-                    chi2, p_chi, dof, expected = chi2_contingency(table)
+                    chi2_val, p_chi, dof, expected = chi2_contingency(table)
+
+                    x_max = max(chi2_val + 5, chi2.ppf(0.999, df=dof))
+                    x = np.linspace(0, x_max, 1000)
+                    y = chi2.pdf(x, df=dof)
+
+                    plt.figure(figsize=(6, 4))
+                    plt.plot(x, y, label=f'dof={dof}', color='blue')
+
+                    x_fill = np.linspace(chi2_val, x_max, 1000)
+                    y_fill = chi2.pdf(x_fill, df=dof)
+                    plt.fill_between(x_fill, y_fill, color='blue', alpha=0.2, label=f'p-value = {p_chi:.4f}')
+
+                    plt.axvline(x=chi2_val, color='red', linestyle='--', label=f'χ² = {chi2_val:.2f}')
+                    plt.title(f'Chi-squared Distribution for {survey_q} vs {midterm_q}')
+                    plt.xlabel('Chi-squared Value')
+                    plt.ylabel('Probability Density')
+                    plt.legend()
+                    plt.xlim(left=0)
+                    plt.ylim(bottom=0, top=.05)
+                    plot_output_dir = OUTPUT_FOLDER / f"Survey_{survey_q}_VS_Midterm_{midterm_q}"
+                    plot_output_dir.mkdir(exist_ok=True)
+                    plot_path = plot_output_dir / f"chi_squared_{survey_q}_{midterm_q}.png" if i == 0 else plot_output_dir / f"chi_squared_{survey_q}_{midterm_q}_tests_with_{i}_less_than_perfect_score.png"
+                    plt.savefig(plot_path)
+                    plt.close()
 
                 fish, p_fish = fisher_exact(table)
 
@@ -107,7 +133,7 @@ def main():
                     "Survey Correct & MT Incorrect": b,
                     "Survey Incorrect & MT Correct": c,
                     "Survey Incorrect & MT Incorrect": d,
-                    "Chi-squared": round(chi2, 4) if perform_chi else "N/A",
+                    "Chi-squared": round(chi2_val, 4) if perform_chi else "N/A",
                     "Fisher Exact": round(fish, 4),
                     "p-value (chi-squared)": round(p_chi, 4) if perform_chi else "N/A",
                     "p-value (fisher exact)": round(p_fish, 4),
