@@ -44,8 +44,10 @@ def get_midterm_data():
 
         question_dict = {}
         offset = 0
+        total_score = 0
         for qname, qdata in question_info.items():
             score = int(values[offset])
+            total_score += score
             rubric = [safe_int(v) for v in values[offset + 1: offset + 1 + len(qdata["rubric"])]]
             question_dict[qname] = (score, rubric)
             offset += 1 + len(qdata["rubric"])
@@ -67,6 +69,8 @@ def get_midterm_data():
             question_dict["Q5"][1] + question_dict["Q6"][1]
         )
 
+        question_dict["total_score"] = total_score
+
         ids_and_scores[student_id] = question_dict
 
     '''# Print the result
@@ -75,7 +79,9 @@ def get_midterm_data():
         for q, (score, rubric) in questions.items():
             print(f"  {q}: ({score}, {rubric})")'''
 
+    # returns dict of student ids and their scores for each question w/ rubric
+    # ex: 1234 : {"Q1" : (8, [0, 1, 0, 0]), "Q2" : (24, [0, 0, 1, 0])}
     return ids_and_scores
 
 if __name__ == "__main__":
-    get_midterm_data()
+    print(get_midterm_data())
