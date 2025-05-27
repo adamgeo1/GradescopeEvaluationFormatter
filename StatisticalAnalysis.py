@@ -190,7 +190,7 @@ def main():
             for sid in midterm:
 
                 if sid in midterm and midterm_q in midterm[sid] and len(midterm[sid][midterm_q][1]) > 0:
-                    mt_above_median = midterm[sid]["total_score"] - midterm_qs["Q3"] >= 73
+                    mt_above_median = midterm[sid]["total_score"] - midterm_qs["Q3"] >= 73 # TODO change 73 to new medians
                     mt_correct = midterm[sid][midterm_q][0] >= score - i
 
                     if mt_correct and mt_above_median:
