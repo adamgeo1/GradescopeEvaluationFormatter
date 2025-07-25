@@ -1,135 +1,98 @@
-def get_survey_data():
-    import pandas as pd
-    from pathlib import Path
-    from openpyxl import load_workbook
-    from openpyxl.chart import BarChart, Reference
-    from openpyxl.utils import get_column_letter
-    import os
+import pandas as pd
+from pathlib import Path
 
-    INPUT_PATH = Path(__file__).parent.absolute() / 'ERsurvey.csv'
-    OUTPUT_PATH = Path(__file__).parent.absolute() / 'output'
+# ---- CONFIG ----
+INPUT_FILE  = Path(__file__).parent / "ERsurvey.csv"
+OUTPUT_DIR  = Path(__file__).parent / "output"
+OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_FILE = OUTPUT_DIR / "ERsurveyFormat.xlsx"
 
-    df = pd.read_csv(INPUT_PATH)
-    # Drop the description row (row 0)
-    df_clean = df.iloc[1:].copy()
+# A simple palette; will cycle if you have >10 rubric items
+COLORS = [
+    "#4F81BD", "#C0504D", "#9BBB59", "#8064A2",
+    "#4BACC6", "#F79646", "#92BBD9", "#FF9DAE",
+    "#FFFF99", "#A6A6A6"
+]
 
-    # Convert AnonID to int, replace NaNs with 0
-    df_clean['AnonID'] = df_clean['AnonID'].apply(lambda x: 0 if pd.isna(x) else int(x))
+# ---- 1) Read the raw CSV without header, grab rows 0–1 as our headers ----
+raw = pd.read_csv(INPUT_FILE, header=None)
+header0 = raw.iloc[0].tolist()
+header1 = raw.iloc[1].tolist()
+data    = raw.iloc[2:].reset_index(drop=True)
 
-    # Identify question start columns
-    question_map = {
-        col.split(":")[0]: col
-        for col in df.columns
-        if isinstance(col, str) and col.startswith("Q") and ":" in col
-    }
+# Build a MultiIndex DataFrame
+df = data.copy()
+df.columns = pd.MultiIndex.from_arrays([header0, header1])
 
-    # Create the result dictionary
-    result = {}
+lvl0 = df.columns.get_level_values(0).astype(str)
+lvl1 = df.columns.get_level_values(1).astype(str)
 
-    for _, row in df_clean.iterrows():
-        anon_id = int(row['AnonID'])
-        result[anon_id] = {}
+# Find where each question begins (level0 like "Q2: …")
+q_starts = [i for i,h in enumerate(lvl0) if h.strip().startswith("Q") and ":" in h]
 
-        for q_short, q_full in question_map.items():
-            start_idx = df.columns.get_loc(q_full)
-            next_q_idx = next(
-                (df.columns.get_loc(question_map[k]) for k in question_map if
-                 df.columns.get_loc(question_map[k]) > start_idx),
-                len(df.columns)
-            )
-            question_values = row.iloc[start_idx:next_q_idx]
+# ---- 2) Write one "Summary" sheet with tables + charts ----
+with pd.ExcelWriter(OUTPUT_FILE, engine="xlsxwriter") as writer:
+    workbook  = writer.book
+    worksheet = workbook.add_worksheet("Summary")
+    writer.sheets["Summary"] = worksheet
 
-            clean_values = []
-            for val in question_values:
-                try:
-                    clean_values.append(int(float(val)))
-                except (ValueError, TypeError):
-                    clean_values.append(0)
+    row = 0
+    for qi, startcol in enumerate(q_starts):
+        endcol = q_starts[qi+1] if qi+1 < len(q_starts) else len(lvl0)
 
-            result[anon_id][q_short] = clean_values
+        # 2a) Grab **all** rubric labels in [startcol..endcol)
+        labels = []
+        cols   = []
+        for j in range(startcol, endcol):
+            lab = lvl1[j].strip()
+            if lab:
+                labels.append(lab)
+                cols.append(j)
 
-    formatDF = pd.DataFrame({'AnonID': result.keys()})
+        # 2b) Count the 1's (fill NaN→0 first)
+        counts = [
+            int(df.iloc[:, j].fillna(0).astype(int).sum())
+            for j in cols
+        ]
 
-    for q in question_map:
-        formatDF[q] = formatDF['AnonID'].apply(
-            lambda anon_id: (
-                int(''.join(str(i + 1) for i, val in enumerate(result[anon_id][q]) if val == 1))
-                if anon_id in result and q in result[anon_id] and any(result[anon_id][q])
-                else pd.NA
-            )
-        )
+        # 2c) Write the table
+        short = lvl0[startcol].split(":")[0].strip()
+        worksheet.write(row,    0, f"{short} Response Counts")
+        worksheet.write(row+1,  0, "Label")
+        worksheet.write(row+1,  1, "Count")
+        for k, (lab, cnt) in enumerate(zip(labels, counts)):
+            worksheet.write(row+2+k, 0, lab)
+            worksheet.write(row+2+k, 1, cnt)
 
-    # uncomment for excel output
-    '''os.makedirs(OUTPUT_PATH, exist_ok=True)
+        # 3) Build a column chart: one series per rubric item
+        chart = workbook.add_chart({"type": "column"})
+        for i, lab in enumerate(labels):
+            chart.add_series({
+                "name":     lab,
+                "values":   ["Summary", row+2+i, 1, row+2+i, 1],
+                "fill":     {"color": COLORS[i % len(COLORS)]},
+            })
 
-    summary_rows = []
+        # Style the chart
+        chart.set_title   ({"name": short})
+        chart.set_x_axis  ({"name": "Option", "label_position": "none"})
+        chart.set_y_axis  ({"name": "Count", "major_gridlines": {"visible": True}})
+        chart.set_legend  ({"position": "right"})
 
-    for idx in range(1, 10):
-        row = {'AnonID': f'Option_{idx}'}
-        for q in question_map:
-            count = formatDF[q].dropna().apply(lambda s: str(idx) in str(s)).sum()
-            row[q] = count
-        summary_rows.append(row)
+        # Dynamically size it so the legend fits
+        # base height 150px + 20px per label
+        max_label_len = max(len(lab) for lab in labels)
+        chart_width = 480 + max_label_len * 7 # 7px per char
+        chart_height = 150 + 20 * len(labels)
+        chart.set_size({
+            "width":  chart_width,
+            "height": chart_height
+        })
 
-    summary_df = pd.DataFrame(summary_rows)
+        # Insert next to the table
+        worksheet.insert_chart(row+1, 3, chart, {"x_offset": 10, "y_offset": 10})
 
-    final_df = pd.concat([formatDF, summary_df], ignore_index=True)
+        # Advance for next question
+        row += len(labels) + 5
 
-    final_df.to_excel(OUTPUT_PATH / 'ERsurveyFormat.xlsx', index=False)
-
-    excel_file= OUTPUT_PATH / 'ERsurveyFormat.xlsx'
-    wb = load_workbook(excel_file)
-    ws = wb.active
-
-    summary_start_row = None
-    for i, row in enumerate(ws.iter_rows(min_col=1, max_col=1), 1):
-        if str(row[0].value).startswith('Option_'):
-            summary_start_row = i
-            break
-
-    num_options = 9
-    end_row = summary_start_row + num_options - 1
-    start_col = 2
-    end_col = ws.max_row
-
-    for col_idx in range(start_col, end_col + 1):
-        question_title = ws.cell(row=1, column=col_idx).value
-        if not question_title or not question_title.startswith('Q'):
-            continue
-
-        chart = BarChart()
-        chart.title = f"{question_title} Option Counts"
-        chart.x_axis.title = "Option"
-        chart.y_axis.title = "Count"
-
-        data = Reference(ws, min_col=col_idx, min_row=summary_start_row, max_row=end_row)
-        categories = Reference(ws, min_col=1, min_row=summary_start_row, max_row=end_row)
-        chart.add_data(data, titles_from_data=False)
-        chart.set_categories(categories)
-
-        chart_anchor_col = get_column_letter(9)
-        chart_anchor_row = 1 + (col_idx - start_col) * 15
-        ws.add_chart(chart, f"{chart_anchor_col}{chart_anchor_row}")
-
-    wb.save(excel_file)'''
-
-
-    '''for q in question_starts:
-        indices = ''.join(formatDF[q].dropna())
-        counts = Counter(indices)
-        x = sorted(counts.keys())
-        y = [counts[k] for k in x]
-
-        plt.bar(x, y)
-        plt.xlabel('Rubric Index')
-        plt.ylabel('Count')
-        plt.title(f'{q} Response Distribution')
-        plt.tight_layout()
-        filename = f"{q.replace(':', '_').replace(' ', '_')}.png"
-        plt.savefig(OUTPUT_PATH / filename)
-        plt.close()'''
-
-    return result
-
-if __name__ == '__main__':
-    get_survey_data()
+print(f"✓ Written summary + charts to {OUTPUT_FILE}")

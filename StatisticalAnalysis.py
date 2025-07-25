@@ -112,7 +112,11 @@ def main():
                     plt.fill_between(x_fill, y_fill, color='blue', alpha=0.2, label=f'p-value = {p_chi:.4f}')
 
                     plt.axvline(x=chi2_val, color='red', linestyle='--', label=f'χ² = {chi2_val:.2f}')
-                    plt.title(f'Chi-squared Distribution for {survey_q} vs {midterm_q}')
+                    if i != 0:
+                        plt.suptitle(f'Chi-squared Distribution for Survey {survey_q} vs Midterm {midterm_q}')
+                        plt.title(f'Tests allowing for {i} less than perfect score on Midterm {midterm_q}')
+                    else:
+                        plt.title(f'Chi-squared Distribution for Survey {survey_q} vs Midterm {midterm_q}')
                     plt.xlabel('Chi-squared Value')
                     plt.ylabel('Probability Density')
                     plt.legend()
