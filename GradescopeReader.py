@@ -1,5 +1,6 @@
 import pandas as pd
 from pathlib import Path
+import math
 
 # ---- CONFIG ----
 INPUT_FILE  = Path(__file__).parent / "ERsurvey.csv"
@@ -44,10 +45,14 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="xlsxwriter") as writer:
         labels = []
         cols   = []
         for j in range(startcol, endcol):
-            lab = lvl1[j].strip()
-            if lab:
-                labels.append(lab)
-                cols.append(j)
+            raw_lab = lvl1[j]
+            if pd.isna(raw_lab):
+                continue
+            lab = str(raw_lab).strip()
+            if not lab or lab.lower() == "nan":
+                continue
+            labels.append(lab)
+            cols.append(j)
 
         # 2b) Count the 1's (fill NaN→0 first)
         counts = [
@@ -93,6 +98,8 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="xlsxwriter") as writer:
         worksheet.insert_chart(row+1, 3, chart, {"x_offset": 10, "y_offset": 10})
 
         # Advance for next question
-        row += len(labels) + 5
+        rows_for_chart = math.ceil(chart_height / 20)
+        rows_for_table = len(labels) + 2
+        row += max(rows_for_chart, rows_for_table) + 3
 
 print(f"✓ Written summary + charts to {OUTPUT_FILE}")
